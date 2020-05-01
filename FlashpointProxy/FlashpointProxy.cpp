@@ -1,9 +1,29 @@
 #include "FlashpointProxy.h"
 #include <windows.h>
 #include <WinInet.h>
+#include <process.h>
 #include <string>
 
-const LPCSTR FlashpointProxy::AGENT = "Flashpoint Proxy";
+LPCSTR FlashpointProxy::AGENT = "Flashpoint Proxy";
+
+const std::string PROXY_SERVER = "http=127.0.0.1:22500;https=127.0.0.1:22500;ftp=127.0.0.1:22500";
+DWORD mainThreadID = 0;
+HANDLE entryPointEventHandle = INVALID_HANDLE_VALUE;
+CONTEXT originalMainThreadContext;
+
+
+
+
+inline size_t stringSize(const char* string) {
+	return strlen(string) + 1;
+}
+
+
+
+
+
+
+
 
 bool FlashpointProxy::getSystemProxy(INTERNET_PER_CONN_OPTION_LIST &internetPerConnOptionList, DWORD internetPerConnOptionListOptionsSize) {
 	DWORD internetPerConnOptionListSize = sizeof(internetPerConnOptionList);
@@ -197,17 +217,193 @@ bool FlashpointProxy::disable() {
 	return true;
 }
 
-extern "C" BOOL APIENTRY DllMain(HMODULE moduleHandle, DWORD fdwReason, LPVOID lpReserved) {
+
+
+
+
+
+
+
+/*
+void link() {
+	MenuHelp(); // COMCTL32
+	SHChangeNotifyRegister(); // SHELL32
+	WahCloseApcHelper(); // WS2HELP
+	accept(); // WS2_32
+	bind(); // WSOCK32
+	WinHttpPacJsWorkerMain(); // WINHTTP
+}
+*/
+
+bool showLastError(LPCSTR errorMessage) {
+	if (!errorMessage) {
+		return false;
+	}
+
+	DWORD lastError = GetLastError();
+	SIZE_T textSize = stringSize(errorMessage) + 15;
+	LPTSTR text = new CHAR[textSize];
+
+	if (sprintf_s(text, textSize, "%s (%d)", errorMessage, lastError) == -1) {
+		delete[] text;
+		text = NULL;
+		return false;
+	}
+
+	if (!MessageBox(NULL, text, "Flashpoint Proxy", MB_OK | MB_ICONERROR)) {
+		delete[] text;
+		text = NULL;
+		return false;
+	}
+
+	delete[] text;
+	text = NULL;
+	return true;
+}
+
+unsigned int __stdcall thread(HANDLE entryPointEventHandle) {
+	if (!FlashpointProxy::enable(PROXY_SERVER)) {
+		showLastError("Failed to Enable Flashpoint Proxy");
+		TerminateProcess(GetCurrentProcess(), -1);
+		return 1;
+	}
+
+
+
+
+	if (!entryPointEventHandle || entryPointEventHandle == INVALID_HANDLE_VALUE) {
+		showLastError("Entry Point Event Handle cannot be NULL or INVALID_HANDLE_VALUE");
+		TerminateProcess(GetCurrentProcess(), -1);
+		return 1;
+	}
+
+	// wait for event from entry point
+	if (WaitForSingleObject(entryPointEventHandle, INFINITE) != WAIT_OBJECT_0) {
+		showLastError("Failed to Wait For Entry Point Event Single Object");
+		TerminateProcess(GetCurrentProcess(), -1);
+		return 1;
+	}
+
+	if (!CloseHandle(entryPointEventHandle)) {
+		showLastError("Failed to Close Entry Point Event Handle");
+		TerminateProcess(GetCurrentProcess(), -1);
+		return 1;
+	}
+
+	entryPointEventHandle = INVALID_HANDLE_VALUE;
+	HANDLE mainThreadHandle = OpenThread(THREAD_SUSPEND_RESUME | THREAD_SET_CONTEXT, FALSE, mainThreadID);
+
+	if (!mainThreadHandle || mainThreadHandle == INVALID_HANDLE_VALUE) {
+		showLastError("Failed to Open Main Thread");
+		TerminateProcess(GetCurrentProcess(), -1);
+		return 1;
+	}
+
+	if (SuspendThread(mainThreadHandle) == -1) {
+		showLastError("Failed to Suspend Main Thread");
+		TerminateProcess(GetCurrentProcess(), -1);
+		return 1;
+	}
+
+	if (!SetThreadContext(mainThreadHandle, &originalMainThreadContext)) {
+		showLastError("Failed to Set Main Thread Context");
+		TerminateProcess(GetCurrentProcess(), -1);
+		return 1;
+	}
+
+	if (ResumeThread(mainThreadHandle) == -1) {
+		showLastError("Failed to Resume Main Thread");
+		TerminateProcess(GetCurrentProcess(), -1);
+		return 1;
+	}
+
+	if (!CloseHandle(mainThreadHandle)) {
+		showLastError("Failed to Close Main Thread Handle");
+		TerminateProcess(GetCurrentProcess(), -1);
+		return 1;
+	}
+
+	mainThreadHandle = INVALID_HANDLE_VALUE;
+	return 0;
+}
+
+void entryPoint() {
+	mainThreadID = GetCurrentThreadId();
+
+	if (!entryPointEventHandle || entryPointEventHandle == INVALID_HANDLE_VALUE) {
+		TerminateProcess(GetCurrentProcess(), -2);
+		while (true) {}
+	}
+
+	if (!SetEvent(entryPointEventHandle)) {
+		TerminateProcess(GetCurrentProcess(), -3);
+	}
+
+	while (true) {}
+}
+
+extern "C" BOOL APIENTRY DllMain(HMODULE moduleHandle, DWORD fdwReason, PCONTEXT contextPointer) {
 	if (fdwReason == DLL_PROCESS_ATTACH) {
 		DisableThreadLibraryCalls(moduleHandle);
 
-		{
-			if (!FlashpointProxy::enable("http=127.0.0.1:22500;https=127.0.0.1:22500;ftp=127.0.0.1:22500")) {
-				MessageBox(NULL, "Connection could not be established with the remote host.", "Flashpoint Proxy", MB_OK | MB_ICONERROR);
+
+
+
+		// dynamic link
+		if (!contextPointer) {
+			if (!FlashpointProxy::enable(PROXY_SERVER)) {
+				showLastError("Failed to Enable Flashpoint Proxy");
 				TerminateProcess(GetCurrentProcess(), -1);
 				return FALSE;
 			}
+			return TRUE;
 		}
+
+
+
+
+
+
+
+
+		// static link
+		// synchronization event (safe to create in DllMain)
+		entryPointEventHandle = CreateEvent(NULL, TRUE, FALSE, "Flashpoint Proxy Entry Point Event");
+
+		if (!entryPointEventHandle || entryPointEventHandle == INVALID_HANDLE_VALUE) {
+			showLastError("Failed to Create Entry Point Event");
+			TerminateProcess(GetCurrentProcess(), -1);
+			return FALSE;
+		}
+
+
+
+
+		// step one: entry point
+		// copy...
+		originalMainThreadContext = *contextPointer;
+		// modify original...
+		contextPointer->Eip = (DWORD)entryPoint;
+
+
+
+
+		// step two: thread (can be created in DllMain, synchronization offloaded to entry point)
+		HANDLE threadHandle = (HANDLE)_beginthreadex(NULL, 0, thread, entryPointEventHandle, 0, 0);
+
+		if (!threadHandle || threadHandle == INVALID_HANDLE_VALUE) {
+			showLastError("Failed to Begin Thread Ex");
+			TerminateProcess(GetCurrentProcess(), -1);
+			return FALSE;
+		}
+
+		if (!CloseHandle(threadHandle)) {
+			showLastError("Failed to Close Thread Handle");
+			TerminateProcess(GetCurrentProcess(), -1);
+			return FALSE;
+		}
+
+		threadHandle = INVALID_HANDLE_VALUE;
 	}
 	return TRUE;
 }
