@@ -1,4 +1,4 @@
-Flashpoint Proxy 1.0.0
+Flashpoint Proxy 1.0.1
 By Anthony Kleine
 
 	This library sets up a process to connect to the Flashpoint Server via
