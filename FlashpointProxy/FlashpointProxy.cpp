@@ -61,6 +61,10 @@ bool FlashpointProxy::getSystemProxy(INTERNET_PER_CONN_OPTION_LIST &internetPerC
 
 bool FlashpointProxy::enable(std::string proxyServer) {
 	HINTERNET internetHandle = InternetOpen(AGENT, INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+
+	if (!internetHandle) {
+		return false;
+	}
 	
     // initialize a INTERNET_PER_CONN_OPTION_LIST instance
 	INTERNET_PER_CONN_OPTION_LIST internetPerConnOptionList;
@@ -121,6 +125,8 @@ bool FlashpointProxy::enable(std::string proxyServer) {
 
 	// set the options on the connection
 	if (!InternetSetOption(internetHandle, INTERNET_OPTION_PER_CONNECTION_OPTION, &internetPerConnOptionList, internetPerConnOptionListSize)) {
+		DWORD lastError = GetLastError();
+
         // free the allocated memory
 		if (internetPerConnOptionList.pOptions[1].Value.pszValue) {
 			delete[] internetPerConnOptionList.pOptions[1].Value.pszValue;
@@ -133,6 +139,7 @@ bool FlashpointProxy::enable(std::string proxyServer) {
 		}
 		
 		InternetCloseHandle(internetHandle);
+		SetLastError(lastError);
 		return false;
 	}
 	
@@ -155,6 +162,10 @@ bool FlashpointProxy::enable(std::string proxyServer) {
 
 bool FlashpointProxy::disable() {
 	HINTERNET internetHandle = InternetOpen(AGENT, INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+
+	if (!internetHandle) {
+		return false;
+	}
 	
     // initialize a INTERNET_PER_CONN_OPTION_LIST instance
 	INTERNET_PER_CONN_OPTION_LIST internetPerConnOptionList;
@@ -175,34 +186,43 @@ bool FlashpointProxy::disable() {
 	
     // set internet options
 	if (!InternetSetOption(internetHandle, INTERNET_OPTION_PER_CONNECTION_OPTION, &internetPerConnOptionList, internetPerConnOptionListSize)) {
+		DWORD lastError = GetLastError();
+
         if (internetPerConnOptionList.pOptions) {
 			delete[] internetPerConnOptionList.pOptions;
 			internetPerConnOptionList.pOptions = NULL;
 		}
 		
 		InternetCloseHandle(internetHandle);
+		SetLastError(lastError);
 		return false;
 	}
 	
 	// notify the system that the registry settings have been changed and cause
     // the proxy data to be reread from the registry for a handle
 	if (!InternetSetOption(internetHandle, INTERNET_OPTION_SETTINGS_CHANGED, NULL, 0)) {
+		DWORD lastError = GetLastError();
+
         if (internetPerConnOptionList.pOptions) {
 			delete[] internetPerConnOptionList.pOptions;
 			internetPerConnOptionList.pOptions = NULL;
 		}
 		
 		InternetCloseHandle(internetHandle);
+		SetLastError(lastError);
 		return false;
 	}
 	
 	if (!InternetSetOption(internetHandle, INTERNET_OPTION_REFRESH, NULL, 0)) {
+		DWORD lastError = GetLastError();
+
         if (internetPerConnOptionList.pOptions) {
 			delete[] internetPerConnOptionList.pOptions;
 			internetPerConnOptionList.pOptions = NULL;
 		}
 		
 		InternetCloseHandle(internetHandle);
+		SetLastError(lastError);
 		return false;
 	}
 	
@@ -261,7 +281,7 @@ bool showLastError(LPCSTR errorMessage) {
 	return true;
 }
 
-unsigned int __stdcall thread(HANDLE entryPointEventHandle) {
+unsigned int __stdcall staticThread(HANDLE entryPointEventHandle) {
 	if (!FlashpointProxy::enable(PROXY_SERVER)) {
 		showLastError("Failed to Enable Flashpoint Proxy");
 		TerminateProcess(GetCurrentProcess(), -1);
@@ -327,6 +347,15 @@ unsigned int __stdcall thread(HANDLE entryPointEventHandle) {
 	return 0;
 }
 
+unsigned int __stdcall dynamicThread(void* argList) {
+	if (!FlashpointProxy::enable(PROXY_SERVER)) {
+		showLastError("Failed to Enable Flashpoint Proxy");
+		TerminateProcess(GetCurrentProcess(), -1);
+		return 1;
+	}
+	return 0;
+}
+
 void entryPoint() {
 	mainThreadID = GetCurrentThreadId();
 
@@ -345,6 +374,7 @@ void entryPoint() {
 extern "C" BOOL APIENTRY DllMain(HMODULE moduleHandle, DWORD fdwReason, PCONTEXT contextPointer) {
 	if (fdwReason == DLL_PROCESS_ATTACH) {
 		DisableThreadLibraryCalls(moduleHandle);
+		HANDLE threadHandle = INVALID_HANDLE_VALUE;
 
 
 
@@ -352,6 +382,27 @@ extern "C" BOOL APIENTRY DllMain(HMODULE moduleHandle, DWORD fdwReason, PCONTEXT
 		// dynamic link
 		if (!contextPointer) {
 			if (!FlashpointProxy::enable(PROXY_SERVER)) {
+				if (GetLastError() == 1131) { // deadlock
+					// nothing we can do except begin a thread
+					// and hope it finishes before WinInet is used
+					threadHandle = (HANDLE)_beginthreadex(NULL, 0, dynamicThread, 0, 0, 0);
+
+					if (!threadHandle || threadHandle == INVALID_HANDLE_VALUE) {
+						showLastError("Failed to Begin Dynamic Thread Ex");
+						TerminateProcess(GetCurrentProcess(), -1);
+						return FALSE;
+					}
+
+					if (!CloseHandle(threadHandle)) {
+						showLastError("Failed to Close Dynamic Thread Handle");
+						TerminateProcess(GetCurrentProcess(), -1);
+						return FALSE;
+					}
+
+					threadHandle = INVALID_HANDLE_VALUE;
+					return TRUE;
+				}
+
 				showLastError("Failed to Enable Flashpoint Proxy");
 				TerminateProcess(GetCurrentProcess(), -1);
 				return FALSE;
@@ -389,16 +440,16 @@ extern "C" BOOL APIENTRY DllMain(HMODULE moduleHandle, DWORD fdwReason, PCONTEXT
 
 
 		// step two: thread (can be created in DllMain, synchronization offloaded to entry point)
-		HANDLE threadHandle = (HANDLE)_beginthreadex(NULL, 0, thread, entryPointEventHandle, 0, 0);
+		threadHandle = (HANDLE)_beginthreadex(NULL, 0, staticThread, entryPointEventHandle, 0, 0);
 
 		if (!threadHandle || threadHandle == INVALID_HANDLE_VALUE) {
-			showLastError("Failed to Begin Thread Ex");
+			showLastError("Failed to Begin Static Thread Ex");
 			TerminateProcess(GetCurrentProcess(), -1);
 			return FALSE;
 		}
 
 		if (!CloseHandle(threadHandle)) {
-			showLastError("Failed to Close Thread Handle");
+			showLastError("Failed to Close Static Thread Handle");
 			TerminateProcess(GetCurrentProcess(), -1);
 			return FALSE;
 		}
