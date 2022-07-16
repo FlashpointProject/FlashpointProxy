@@ -18,12 +18,21 @@
     <ClCompile Include="FlashpointProxy.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="main.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="shared.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="FlashpointProxy.h">
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="resource.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shared.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -39,5 +48,10 @@
   </ItemGroup>
   <ItemGroup>
     <Text Include="..\README.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <MASM Include="safeseh.asm">
+      <Filter>Source Files</Filter>
+    </MASM>
   </ItemGroup>
 </Project>
