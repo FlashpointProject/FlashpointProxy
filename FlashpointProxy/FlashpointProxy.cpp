@@ -1,29 +1,8 @@
 #include "FlashpointProxy.h"
 #include <windows.h>
 #include <WinInet.h>
-#include <process.h>
-#include <string>
 
 LPCSTR FlashpointProxy::AGENT = "Flashpoint Proxy";
-
-const std::string PROXY_SERVER = "http=127.0.0.1:22500;https=127.0.0.1:22500;ftp=127.0.0.1:22500";
-DWORD mainThreadID = 0;
-HANDLE entryPointEventHandle = INVALID_HANDLE_VALUE;
-CONTEXT originalMainThreadContext;
-
-
-
-
-inline size_t stringSize(const char* string) {
-	return strlen(string) + 1;
-}
-
-
-
-
-
-
-
 
 bool FlashpointProxy::getSystemProxy(INTERNET_PER_CONN_OPTION_LIST &internetPerConnOptionList, DWORD internetPerConnOptionListOptionsSize) {
 	DWORD internetPerConnOptionListSize = sizeof(internetPerConnOptionList);
@@ -59,7 +38,7 @@ bool FlashpointProxy::getSystemProxy(INTERNET_PER_CONN_OPTION_LIST &internetPerC
 	return true;
 }
 
-bool FlashpointProxy::enable(std::string proxyServer) {
+bool FlashpointProxy::enable(LPSTR proxyServer) {
 	DWORD lastError = 0;
 	HINTERNET internetHandle = InternetOpen(AGENT, INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
 
@@ -86,7 +65,7 @@ bool FlashpointProxy::enable(std::string proxyServer) {
 
 	// set proxy name
 	internetPerConnOptionList.pOptions[1].dwOption = INTERNET_PER_CONN_PROXY_SERVER;
-	size_t proxyServerSize = proxyServer.length() + 1;
+	size_t proxyServerSize = stringSize(proxyServer);
 	internetPerConnOptionList.pOptions[1].Value.pszValue = new CHAR[proxyServerSize];
 
 	if (!internetPerConnOptionList.pOptions[1].Value.pszValue) {
@@ -99,7 +78,7 @@ bool FlashpointProxy::enable(std::string proxyServer) {
 		return false;
 	}
 
-	if (strncpy_s(internetPerConnOptionList.pOptions[1].Value.pszValue, proxyServerSize, proxyServer.c_str(), proxyServerSize)) {
+	if (strncpy_s(internetPerConnOptionList.pOptions[1].Value.pszValue, proxyServerSize, proxyServer, proxyServerSize)) {
 		if (internetPerConnOptionList.pOptions[1].Value.pszValue) {
 			delete[] internetPerConnOptionList.pOptions[1].Value.pszValue;
 			internetPerConnOptionList.pOptions[1].Value.pszValue = NULL;
@@ -238,234 +217,3 @@ bool FlashpointProxy::disable() {
 	}
 	return true;
 }
-
-
-
-
-
-
-
-
-/*
-void link() {
-	MenuHelp(); // COMCTL32
-	SHChangeNotifyRegister(); // SHELL32
-	WahCloseApcHelper(); // WS2HELP
-	accept(); // WS2_32
-	bind(); // WSOCK32
-	WinHttpPacJsWorkerMain(); // WINHTTP
-}
-*/
-
-bool showLastError(LPCSTR errorMessage) {
-	if (!errorMessage) {
-		return false;
-	}
-
-	DWORD lastError = GetLastError();
-	SIZE_T textSize = stringSize(errorMessage) + 15;
-	LPTSTR text = new CHAR[textSize];
-
-	if (sprintf_s(text, textSize, "%s (%d)", errorMessage, lastError) == -1) {
-		delete[] text;
-		text = NULL;
-		return false;
-	}
-
-	if (!MessageBox(NULL, text, "Flashpoint Proxy", MB_OK | MB_ICONERROR)) {
-		delete[] text;
-		text = NULL;
-		return false;
-	}
-
-	delete[] text;
-	text = NULL;
-	return true;
-}
-
-unsigned int __stdcall staticThread(HANDLE entryPointEventHandle) {
-	if (!FlashpointProxy::enable(PROXY_SERVER)) {
-		showLastError("Failed to Enable Flashpoint Proxy");
-		TerminateProcess(GetCurrentProcess(), -1);
-		return 1;
-	}
-
-
-
-
-	if (!entryPointEventHandle || entryPointEventHandle == INVALID_HANDLE_VALUE) {
-		showLastError("Entry Point Event Handle cannot be NULL or INVALID_HANDLE_VALUE");
-		TerminateProcess(GetCurrentProcess(), -1);
-		return 1;
-	}
-
-	// wait for event from entry point
-	if (WaitForSingleObject(entryPointEventHandle, INFINITE) != WAIT_OBJECT_0) {
-		showLastError("Failed to Wait For Entry Point Event Single Object");
-		TerminateProcess(GetCurrentProcess(), -1);
-		return 1;
-	}
-
-	if (!CloseHandle(entryPointEventHandle)) {
-		showLastError("Failed to Close Entry Point Event Handle");
-		TerminateProcess(GetCurrentProcess(), -1);
-		return 1;
-	}
-
-	entryPointEventHandle = INVALID_HANDLE_VALUE;
-	HANDLE mainThreadHandle = OpenThread(THREAD_SUSPEND_RESUME | THREAD_SET_CONTEXT, FALSE, mainThreadID);
-
-	if (!mainThreadHandle || mainThreadHandle == INVALID_HANDLE_VALUE) {
-		showLastError("Failed to Open Main Thread");
-		TerminateProcess(GetCurrentProcess(), -1);
-		return 1;
-	}
-
-	if (SuspendThread(mainThreadHandle) == -1) {
-		showLastError("Failed to Suspend Main Thread");
-		TerminateProcess(GetCurrentProcess(), -1);
-		return 1;
-	}
-
-	if (!SetThreadContext(mainThreadHandle, &originalMainThreadContext)) {
-		showLastError("Failed to Set Main Thread Context");
-		TerminateProcess(GetCurrentProcess(), -1);
-		return 1;
-	}
-
-	if (ResumeThread(mainThreadHandle) == -1) {
-		showLastError("Failed to Resume Main Thread");
-		TerminateProcess(GetCurrentProcess(), -1);
-		return 1;
-	}
-
-	if (!CloseHandle(mainThreadHandle)) {
-		showLastError("Failed to Close Main Thread Handle");
-		TerminateProcess(GetCurrentProcess(), -1);
-		return 1;
-	}
-
-	mainThreadHandle = INVALID_HANDLE_VALUE;
-	return 0;
-}
-
-unsigned int __stdcall dynamicThread(void* argList) {
-	if (!FlashpointProxy::enable(PROXY_SERVER)) {
-		showLastError("Failed to Enable Flashpoint Proxy");
-		TerminateProcess(GetCurrentProcess(), -1);
-		return 1;
-	}
-	return 0;
-}
-
-void entryPoint() {
-	mainThreadID = GetCurrentThreadId();
-
-	if (!entryPointEventHandle || entryPointEventHandle == INVALID_HANDLE_VALUE) {
-		TerminateProcess(GetCurrentProcess(), -2);
-		while (true) {}
-	}
-
-	if (!SetEvent(entryPointEventHandle)) {
-		TerminateProcess(GetCurrentProcess(), -3);
-	}
-
-	while (true) {}
-}
-
-extern "C" BOOL APIENTRY DllMain(HMODULE moduleHandle, DWORD fdwReason, PCONTEXT contextPointer) {
-	if (fdwReason == DLL_PROCESS_ATTACH) {
-		DisableThreadLibraryCalls(moduleHandle);
-		HANDLE threadHandle = INVALID_HANDLE_VALUE;
-
-
-
-
-		// dynamic link
-		if (!contextPointer) {
-			if (!FlashpointProxy::enable(PROXY_SERVER)) {
-				if (GetLastError() != 1131) {
-					showLastError("Failed to Enable Flashpoint Proxy");
-					TerminateProcess(GetCurrentProcess(), -1);
-					return FALSE;
-				}
-
-				// deadlock
-				// nothing we can do except begin a thread
-				// and hope it finishes before WinInet is used
-				threadHandle = (HANDLE)_beginthreadex(NULL, 0, dynamicThread, 0, 0, 0);
-
-				if (!threadHandle || threadHandle == INVALID_HANDLE_VALUE) {
-					showLastError("Failed to Begin Dynamic Thread Ex");
-					TerminateProcess(GetCurrentProcess(), -1);
-					return FALSE;
-				}
-
-				if (!CloseHandle(threadHandle)) {
-					showLastError("Failed to Close Dynamic Thread Handle");
-					TerminateProcess(GetCurrentProcess(), -1);
-					return FALSE;
-				}
-
-				threadHandle = INVALID_HANDLE_VALUE;
-			}
-			return TRUE;
-		}
-
-
-
-
-
-
-
-
-		// static link
-		// synchronization event (safe to create in DllMain)
-		entryPointEventHandle = CreateEvent(NULL, TRUE, FALSE, "Flashpoint Proxy Entry Point Event");
-
-		if (!entryPointEventHandle || entryPointEventHandle == INVALID_HANDLE_VALUE) {
-			showLastError("Failed to Create Entry Point Event");
-			TerminateProcess(GetCurrentProcess(), -1);
-			return FALSE;
-		}
-
-
-
-
-		// step one: entry point
-		// copy...
-		originalMainThreadContext = *contextPointer;
-		// modify original...
-		contextPointer->Eip = (DWORD)entryPoint;
-
-
-
-
-		// step two: thread (can be created in DllMain, synchronization offloaded to entry point)
-		threadHandle = (HANDLE)_beginthreadex(NULL, 0, staticThread, entryPointEventHandle, 0, 0);
-
-		if (!threadHandle || threadHandle == INVALID_HANDLE_VALUE) {
-			showLastError("Failed to Begin Static Thread Ex");
-			TerminateProcess(GetCurrentProcess(), -1);
-			return FALSE;
-		}
-
-		if (!CloseHandle(threadHandle)) {
-			showLastError("Failed to Close Static Thread Handle");
-			TerminateProcess(GetCurrentProcess(), -1);
-			return FALSE;
-		}
-
-		threadHandle = INVALID_HANDLE_VALUE;
-	}
-	return TRUE;
-}
-
-/*
-"The Lord said, 'Go out and stand on the mountain in the presence of the Lord, for the Lord is about to pass by.'
-
-Then a great and powerful wind tore the mountains apart and shattered the rocks before the Lord, but the Lord was not in the wind.
-After the wind there was an earthquake, but the Lord was not in the earthquake.
-After the earthquake came a fire, but the Lord was not in the fire.
-And after the fire came a gentle whisper." - 1 Kings 19:11-12
-*/
