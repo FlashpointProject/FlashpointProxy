@@ -5,10 +5,10 @@
   shared.cpp
      Creating library C:\Users\Anthony\Documents\Visual Studio 2017\Projects\FlashpointProxy\Release\FlashpointProxy.lib and object C:\Users\Anthony\Documents\Visual Studio 2017\Projects\FlashpointProxy\Release\FlashpointProxy.exp
   Generating code
-c:\users\anthony\documents\visual studio 2017\projects\flashpointproxy\flashpointproxy\shared.cpp(76): warning C4733: Inline asm assigning to 'FS:0': handler not registered as safe handler
-c:\users\anthony\documents\visual studio 2017\projects\flashpointproxy\flashpointproxy\shared.cpp(85): warning C4733: Inline asm assigning to 'FS:0': handler not registered as safe handler
-c:\users\anthony\documents\visual studio 2017\projects\flashpointproxy\flashpointproxy\shared.cpp(76): warning C4733: Inline asm assigning to 'FS:0': handler not registered as safe handler
-c:\users\anthony\documents\visual studio 2017\projects\flashpointproxy\flashpointproxy\shared.cpp(85): warning C4733: Inline asm assigning to 'FS:0': handler not registered as safe handler
+c:\users\anthony\documents\visual studio 2017\projects\flashpointproxy\flashpointproxy\shared.cpp(81): warning C4733: Inline asm assigning to 'FS:0': handler not registered as safe handler
+c:\users\anthony\documents\visual studio 2017\projects\flashpointproxy\flashpointproxy\shared.cpp(90): warning C4733: Inline asm assigning to 'FS:0': handler not registered as safe handler
+c:\users\anthony\documents\visual studio 2017\projects\flashpointproxy\flashpointproxy\shared.cpp(81): warning C4733: Inline asm assigning to 'FS:0': handler not registered as safe handler
+c:\users\anthony\documents\visual studio 2017\projects\flashpointproxy\flashpointproxy\shared.cpp(90): warning C4733: Inline asm assigning to 'FS:0': handler not registered as safe handler
   All 393 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
   Finished generating code
   FlashpointProxy.vcxproj -> C:\Users\Anthony\Documents\Visual Studio 2017\Projects\FlashpointProxy\Release\FlashpointProxy.dll
