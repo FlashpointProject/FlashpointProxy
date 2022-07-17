@@ -59,6 +59,14 @@ extern "C" EXCEPTION_DISPOSITION __cdecl _except_handler(struct _EXCEPTION_RECOR
 
 	// set the new thread context to the one passed in as an argument
 	*ContextRecord = *(PCONTEXT)ExceptionRecord->ExceptionInformation[0];
+
+	__asm {
+		// remove our EXCEPTION_REGISTRATION record
+		mov eax, [EstablisherFrame] // get establisher frame
+		mov eax, [eax] // get pointer to previous record
+		mov ecx, fs:[0] // get address of current handler
+		mov [ecx], eax // set pointer to previous record in the current handler
+	}
 	return ExceptionContinueExecution;
 }
 #endif
