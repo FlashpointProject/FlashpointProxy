@@ -57,15 +57,20 @@ extern "C" EXCEPTION_DISPOSITION __cdecl _except_handler(struct _EXCEPTION_RECOR
 		return ExceptionContinueSearch;
 	}
 
+	if (!EstablisherFrame) {
+		return ExceptionContinueSearch;
+	}
+
+	DWORD record = *(PDWORD)EstablisherFrame;
+
 	// set the new thread context to the one passed in as an argument
 	*ContextRecord = *(PCONTEXT)ExceptionRecord->ExceptionInformation[0];
 
 	__asm {
 		// remove our EXCEPTION_REGISTRATION record
-		mov eax, [EstablisherFrame] // get establisher frame
-		mov eax, [eax] // get pointer to previous record
-		mov ecx, fs:[0] // get address of current handler
-		mov [ecx], eax // set pointer to previous record in the current handler
+		mov eax, record // address of previous record
+		mov ecx, fs:[0] // address of current record
+		mov [ecx], eax // set pointer to previous record at address of current record
 	}
 	return ExceptionContinueExecution;
 }
@@ -76,16 +81,16 @@ void setCurrentThreadContext(CONTEXT &context) {
 	// intended Windows function for this purpose, 64-bit only :(
 	RtlRestoreContext(&context, NULL);
 	#else
+	ULONG_PTR setCurrentThreadContextArguments[SET_CURRENT_THREAD_CONTEXT_NUMBER_OF_ARGUMENTS] = { (ULONG_PTR)&context };
+
 	// use SEH to set the current thread's context
 	DWORD handler = (DWORD)_except_handler_safeseh;
 
 	// pass the new thread context as an argument
-	ULONG_PTR setCurrentThreadContextArguments[SET_CURRENT_THREAD_CONTEXT_NUMBER_OF_ARGUMENTS] = { (ULONG_PTR)&context };
-
 	__asm {
 		// build EXCEPTION_REGISTRATION record
 		push handler // address of handler function
-		push fs:[0] // address of previous handler
+		push fs:[0] // address of previous record
 		mov fs:[0], esp // install new EXCEPTION_REGISTRATION
 	}
 
