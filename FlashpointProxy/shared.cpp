@@ -32,14 +32,19 @@ extern "C" int __stdcall _except_handler_safeseh();
 static const size_t CONTEXT_SIZE = sizeof(CONTEXT);
 static const DWORD SET_CURRENT_THREAD_CONTEXT_EXCEPTION_CODE = 0xE0000000 | (CONTEXT_SIZE & 0x0FFFFFFF);
 
+static const DWORD SET_CURRENT_THREAD_CONTEXT_EXCEPTION_FLAGS = 0;
 static const DWORD SET_CURRENT_THREAD_CONTEXT_NUMBER_OF_ARGUMENTS = 1;
 
 #if !defined _AMD64_ || !defined _IA64_
 extern "C" EXCEPTION_DISPOSITION __cdecl _except_handler(struct _EXCEPTION_RECORD* ExceptionRecord, void* EstablisherFrame, struct _CONTEXT* ContextRecord, void* DispatcherContext) {
 	// if there is an error with the arguments
 	// let the next "real" exception handler handle the error
+	if (!ExceptionRecord) {
+		return ExceptionContinueSearch;
+	}
+
 	if (ExceptionRecord->ExceptionCode != SET_CURRENT_THREAD_CONTEXT_EXCEPTION_CODE ||
-		ExceptionRecord->ExceptionFlags != 0 ||
+		ExceptionRecord->ExceptionFlags != SET_CURRENT_THREAD_CONTEXT_EXCEPTION_FLAGS ||
 		ExceptionRecord->NumberParameters < SET_CURRENT_THREAD_CONTEXT_NUMBER_OF_ARGUMENTS) {
 		return ExceptionContinueSearch;
 	}
@@ -72,12 +77,12 @@ void setCurrentThreadContext(CONTEXT &context) {
 	__asm {
 		// build EXCEPTION_REGISTRATION record
 		push handler // address of handler function
-		push fs : [0] // address of previous handler
-		mov fs : [0], esp // install new EXCEPTION_REGISTRATION
+		push fs:[0] // address of previous handler
+		mov fs:[0], esp // install new EXCEPTION_REGISTRATION
 	}
 
 	// raise the Current Thread Context exception
-	RaiseException(SET_CURRENT_THREAD_CONTEXT_EXCEPTION_CODE, 0, SET_CURRENT_THREAD_CONTEXT_NUMBER_OF_ARGUMENTS, setCurrentThreadContextArguments);
+	RaiseException(SET_CURRENT_THREAD_CONTEXT_EXCEPTION_CODE, SET_CURRENT_THREAD_CONTEXT_EXCEPTION_FLAGS, SET_CURRENT_THREAD_CONTEXT_NUMBER_OF_ARGUMENTS, setCurrentThreadContextArguments);
 
 	__asm {
 		// remove our EXCEPTION_REGISTRATION record
