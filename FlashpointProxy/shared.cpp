@@ -4,7 +4,7 @@
 #include <string>
 #include <sstream>
 
-static LPCSTR messageBoxCaption = "Flashpoint Proxy";
+static LPCSTR MESSAGE_BOX_CAPTION = "Flashpoint Proxy";
 
 bool showLastError(LPCSTR errorMessage) {
 	if (!errorMessage) {
@@ -14,7 +14,7 @@ bool showLastError(LPCSTR errorMessage) {
 	std::ostringstream oStringStream;
 	oStringStream << errorMessage << " (" << GetLastError() << ")";
 
-	if (!MessageBox(NULL, oStringStream.str().c_str(), messageBoxCaption, MB_OK | MB_ICONERROR)) {
+	if (!MessageBox(NULL, oStringStream.str().c_str(), MESSAGE_BOX_CAPTION, MB_OK | MB_ICONERROR)) {
 		return false;
 	}
 	return true;
