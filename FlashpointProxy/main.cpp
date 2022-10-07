@@ -11,6 +11,7 @@ void entryPoint() {
 	if (!FlashpointProxy::enable(proxyServer)) {
 		showLastError("Failed to Enable Flashpoint Proxy");
 		terminateCurrentProcess();
+		return;
 	}
 
 	setCurrentThreadContext(originalMainThreadContext);
