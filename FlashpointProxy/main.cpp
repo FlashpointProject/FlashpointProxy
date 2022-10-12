@@ -1,7 +1,7 @@
 #include "shared.h"
 #include "FlashpointProxy.h"
 #include <windows.h>
-#include <WinNT.h>
+#include <winnt.h>
 #include <process.h>
 
 LPSTR proxyServer = "http=127.0.0.1:22500;https=127.0.0.1:22500;ftp=127.0.0.1:22500";
@@ -21,8 +21,11 @@ unsigned int __stdcall dynamicThread(void* argList) {
 	if (!FlashpointProxy::enable(proxyServer)) {
 		showLastError("Failed to Enable Flashpoint Proxy");
 		terminateCurrentProcess();
+		_endthreadex(1);
 		return 1;
 	}
+
+	_endthreadex(0);
 	return 0;
 }
 
@@ -46,16 +49,16 @@ extern "C" BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, PCONTEXT contex
 				// deadlock fallback
 				// nothing we can do except begin a thread
 				// and hope it finishes before WinInet is used
-				HANDLE threadHandle = (HANDLE)_beginthreadex(NULL, 0, dynamicThread, 0, 0, 0);
+				HANDLE threadHandle = (HANDLE)_beginthreadex(NULL, 0, dynamicThread, NULL, 0, NULL);
 
 				if (!threadHandle || threadHandle == INVALID_HANDLE_VALUE) {
-					showLastError("Failed to Begin Dynamic Thread");
+					showLastError("Failed to Begin Thread");
 					terminateCurrentProcess();
 					return FALSE;
 				}
 
 				if (!CloseHandle(threadHandle)) {
-					showLastError("Failed to Close Dynamic Thread Handle");
+					showLastError("Failed to Close Handle");
 					terminateCurrentProcess();
 					return FALSE;
 				}
