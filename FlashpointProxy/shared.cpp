@@ -1,6 +1,6 @@
 #include "shared.h"
 #include <windows.h>
-#include <WinNT.h>
+#include <winnt.h>
 #include <string>
 #include <sstream>
 
