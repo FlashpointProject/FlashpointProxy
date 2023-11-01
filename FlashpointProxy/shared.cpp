@@ -114,7 +114,7 @@ bool preferenceStringToLong(LPCSTR preferenceString, long &preference) {
 	preference = strtol(preferenceString, &endPointer, 0);
 
 	if (preferenceString == endPointer
-		|| (!preference && errno != 0)) {
+		|| (!preference && errno)) {
 		preference = PREFERENCE_DEFAULT;
 	}
 	return true;
