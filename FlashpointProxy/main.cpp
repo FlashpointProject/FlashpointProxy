@@ -56,6 +56,7 @@ extern "C" BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, PCONTEXT contex
 
 			// copy...
 			originalMainThreadContext = *contextPointer;
+
 			// modify original...
 			#if defined _AMD64_ || defined _IA64_
 			contextPointer->Rip = (DWORD64)entryPoint;
@@ -83,7 +84,7 @@ extern "C" BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, PCONTEXT contex
 				HANDLE thread = (HANDLE)_beginthreadex(NULL, 0, dynamicThread, NULL, 0, NULL);
 
 				SCOPE_EXIT {
-					if (closeThread(thread)) {
+					if (!closeThread(thread)) {
 						result = FALSE;
 					}
 				};
