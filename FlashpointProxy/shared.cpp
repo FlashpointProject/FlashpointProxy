@@ -104,6 +104,8 @@ void setCurrentThreadContext(CONTEXT &context) {
 }
 
 bool preferenceStringToLong(LPCSTR preferenceString, long &preference) {
+	preference = PREFERENCE_DEFAULT;
+
 	if (!preferenceString) {
 		return false;
 	}
