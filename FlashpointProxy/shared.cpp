@@ -83,13 +83,10 @@ void setCurrentThreadContext(CONTEXT &context) {
 	#else
 	ULONG_PTR setCurrentThreadContextArguments[SET_CURRENT_THREAD_CONTEXT_NUMBER_OF_ARGUMENTS] = { (ULONG_PTR)&context };
 
-	// use SEH to set the current thread's context
-	DWORD handler = (DWORD)_except_handler_safeseh;
-
 	// pass the new thread context as an argument
 	__asm {
 		// build EXCEPTION_REGISTRATION record
-		push handler // address of handler function
+		push _except_handler_safeseh // address of handler function
 		push fs:[0] // address of previous record
 		mov fs:[0], esp // install new EXCEPTION_REGISTRATION
 	}
@@ -104,4 +101,75 @@ void setCurrentThreadContext(CONTEXT &context) {
 		add esp, 00000008h // clean our EXCEPTION_REGISTRATION off stack
 	}
 	#endif
+}
+
+bool getFilePreference(LPCSTR fileName, long &preference) {
+	preference = PREFERENCE_DEFAULT;
+
+	if (!fileName) {
+		return false;
+	}
+
+	bool result = true;
+
+	HANDLE file = CreateFile(fileName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+
+	SCOPE_EXIT {
+		if (!closeHandle(file)) {
+			result = false;
+		}
+	};
+
+	if (file && file != INVALID_HANDLE_VALUE) {
+		const DWORD PREFERENCE_SIZE = 16;
+		CHAR _preference[PREFERENCE_SIZE] = "";
+
+		DWORD numberOfBytesRead = 0;
+
+		if (!ReadFile(file, _preference, PREFERENCE_SIZE - 1, &numberOfBytesRead, NULL)) {
+			return false;
+		}
+
+		preference = strtol(_preference, 0, 0);
+	}
+	return result;
+}
+
+bool getEnvironmentVariablePreference(LPCSTR environmentVariableName, long &preference) {
+	preference = PREFERENCE_DEFAULT;
+
+	if (!environmentVariableName) {
+		return false;
+	}
+
+	const DWORD PREFERENCE_SIZE = 16;
+	CHAR _preference[PREFERENCE_SIZE] = "";
+
+	if (GetEnvironmentVariable(environmentVariableName, _preference, PREFERENCE_SIZE - 1)) {
+		preference = strtol(_preference, 0, 0);
+	}
+	return true;
+}
+
+bool getPreference(LPCSTR fileName, LPCSTR environmentVariableName, long &preference) {
+	preference = PREFERENCE_DEFAULT;
+
+	if (!fileName) {
+		return false;
+	}
+
+	if (!environmentVariableName) {
+		return false;
+	}
+
+	if (!getFilePreference(fileName, preference)) {
+		return false;
+	}
+
+	if (preference == PREFERENCE_DEFAULT) {
+		if (!getEnvironmentVariablePreference(environmentVariableName, preference)) {
+			return false;
+		}
+	}
+	return true;
 }

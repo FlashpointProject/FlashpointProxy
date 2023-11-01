@@ -4,12 +4,17 @@
 #include <winnt.h>
 #include <process.h>
 
-LPSTR proxyServer = "http=127.0.0.1:22500;https=127.0.0.1:22500;ftp=127.0.0.1:22500";
 CONTEXT originalMainThreadContext = {};
 
 void entryPoint() {
-	if (!FlashpointProxy::enable(proxyServer)) {
-		showLastError("Failed to Enable Flashpoint Proxy");
+	try {
+		if (!FlashpointProxy::enable()) {
+			showLastError("Failed to Enable Flashpoint Proxy");
+			terminateCurrentProcess();
+			return;
+		}
+	} catch (...) {
+		// the thread hasn't set up vectored exception handling at this stage
 		terminateCurrentProcess();
 		return;
 	}
@@ -18,7 +23,9 @@ void entryPoint() {
 }
 
 unsigned int __stdcall dynamicThread(void* argList) {
-	if (!FlashpointProxy::enable(proxyServer)) {
+	// do not create any C++ objects here
+	// (unrolling interferes with _endthreadex)
+	if (!FlashpointProxy::enable()) {
 		showLastError("Failed to Enable Flashpoint Proxy");
 		terminateCurrentProcess();
 		_endthreadex(1);
@@ -31,52 +38,69 @@ unsigned int __stdcall dynamicThread(void* argList) {
 
 extern "C" BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, PCONTEXT contextPointer) {
 	if (reason == DLL_PROCESS_ATTACH) {
+		MAKE_SCOPE_EXIT(terminateCurrentProcessScopeExit) {
+			terminateCurrentProcess();
+		};
+
 		if (!DisableThreadLibraryCalls(instance)) {
 			showLastError("Failed to Disable Thread Library Calls");
-			terminateCurrentProcess();
 			return FALSE;
 		}
 
-		// dynamic link
-		if (!contextPointer) {
-			if (!FlashpointProxy::enable(proxyServer)) {
-				if (GetLastError() != ERROR_POSSIBLE_DEADLOCK) {
-					showLastError("Failed to Enable Flashpoint Proxy");
-					terminateCurrentProcess();
-					return FALSE;
-				}
-
-				// deadlock fallback
-				// nothing we can do except begin a thread
-				// and hope it finishes before WinInet is used
-				HANDLE threadHandle = (HANDLE)_beginthreadex(NULL, 0, dynamicThread, NULL, 0, NULL);
-
-				if (!threadHandle || threadHandle == INVALID_HANDLE_VALUE) {
-					showLastError("Failed to Begin Thread");
-					terminateCurrentProcess();
-					return FALSE;
-				}
-
-				if (!CloseHandle(threadHandle)) {
-					showLastError("Failed to Close Handle");
-					terminateCurrentProcess();
-					return FALSE;
-				}
-
-				threadHandle = NULL;
+		// static link
+		if (contextPointer) {
+			if (IS_INTRESOURCE(contextPointer)) {
+				showLastError("Context Pointer invalid");
+				return FALSE;
 			}
+
+			// copy...
+			originalMainThreadContext = *contextPointer;
+			// modify original...
+			#if defined _AMD64_ || defined _IA64_
+			contextPointer->Rip = (DWORD64)entryPoint;
+			#else
+			contextPointer->Eip = (DWORD)entryPoint;
+			#endif
+
+			terminateCurrentProcessScopeExit.dismiss();
 			return TRUE;
 		}
 
-		// static link
-		// copy...
-		originalMainThreadContext = *contextPointer;
-		// modify original...
-		#if defined _AMD64_ || defined _IA64_
-		contextPointer->Rip = (DWORD64)entryPoint;
-		#else
-		contextPointer->Eip = (DWORD)entryPoint;
-		#endif
+		// dynamic link
+		if (!FlashpointProxy::enable()) {
+			if (GetLastError() != ERROR_POSSIBLE_DEADLOCK) {
+				showLastError("Failed to Enable Flashpoint Proxy");
+				return FALSE;
+			}
+
+			BOOL result = TRUE;
+
+			{
+				// deadlock fallback
+				// nothing we can do except begin a thread
+				// and hope it finishes before WinInet is used
+				HANDLE thread = (HANDLE)_beginthreadex(NULL, 0, dynamicThread, NULL, 0, NULL);
+
+				SCOPE_EXIT {
+					if (closeThread(thread)) {
+						result = FALSE;
+					}
+				};
+
+				if (!thread || thread == INVALID_HANDLE_VALUE) {
+					showLastError("Failed to Begin Thread");
+					return FALSE;
+				}
+			}
+
+			if (result) {
+				terminateCurrentProcessScopeExit.dismiss();
+			}
+			return result;
+		}
+
+		terminateCurrentProcessScopeExit.dismiss();
 	}
 	return TRUE;
 }

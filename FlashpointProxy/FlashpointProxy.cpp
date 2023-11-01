@@ -1,12 +1,21 @@
 #include "FlashpointProxy.h"
+#include <string>
+#include <sstream>
 #include <windows.h>
 #include <WinInet.h>
 
 LPCSTR FlashpointProxy::AGENT = "Flashpoint Proxy";
 
-bool FlashpointProxy::getSystemProxy(INTERNET_PER_CONN_OPTION_LIST &internetPerConnOptionList, DWORD internetPerConnOptionListOptionsSize) {
-	DWORD internetPerConnOptionListSize = sizeof(internetPerConnOptionList);
+const bool FlashpointProxy::FP_PROXY_DEFAULT = true;
+const int FlashpointProxy::FP_PROXY_PORT_DEFAULT = 22500;
 
+LPCSTR FlashpointProxy::FP_PROXY_FILE_NAME = "proxy.txt";
+LPCSTR FlashpointProxy::FP_PROXY_PORT_FILE_NAME = "port.txt";
+
+LPCSTR FlashpointProxy::FP_PROXY = "FP_PROXY";
+LPCSTR FlashpointProxy::FP_PROXY_PORT = "FP_PROXY_PORT";
+
+bool FlashpointProxy::getSystemProxy(INTERNET_PER_CONN_OPTION_LIST &internetPerConnOptionList, DWORD internetPerConnOptionListOptionsSize) {
 	if (!internetPerConnOptionList.pOptions) {
 		return false;
 	}
@@ -20,6 +29,8 @@ bool FlashpointProxy::getSystemProxy(INTERNET_PER_CONN_OPTION_LIST &internetPerC
 
 	// set proxy name
 	internetPerConnOptionList.pOptions[1].dwOption = INTERNET_PER_CONN_PROXY_SERVER;
+
+	DWORD internetPerConnOptionListSize = sizeof(internetPerConnOptionList);
 
 	// fill the internetPerConnOptionList structure
 	internetPerConnOptionList.dwSize = internetPerConnOptionListSize;
@@ -38,63 +49,95 @@ bool FlashpointProxy::getSystemProxy(INTERNET_PER_CONN_OPTION_LIST &internetPerC
 	return true;
 }
 
-bool FlashpointProxy::enable(LPSTR proxyServer) {
-	DWORD lastError = 0;
-	HINTERNET internetHandle = InternetOpen(AGENT, INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+bool FlashpointProxy::getPreferences(bool &proxy, int &port) {
+	proxy = FP_PROXY_DEFAULT;
+	port = FP_PROXY_PORT_DEFAULT;
 
-	if (!internetHandle) {
+	long proxyPreference = PREFERENCE_DEFAULT;
+	
+	if (!getPreference(FP_PROXY_FILE_NAME, FP_PROXY, proxyPreference)) {
 		return false;
 	}
-	
-    // initialize a INTERNET_PER_CONN_OPTION_LIST instance
-	INTERNET_PER_CONN_OPTION_LIST internetPerConnOptionList;
-	const DWORD internetPerConnOptionListSize = sizeof(internetPerConnOptionList);
+
+	long portPreference = PREFERENCE_DEFAULT;
+
+	if (!getPreference(FP_PROXY_PORT_FILE_NAME, FP_PROXY_PORT, portPreference)) {
+		return false;
+	}
+
+	if (proxyPreference != PREFERENCE_DEFAULT) {
+		proxy = (bool)proxyPreference;
+	}
+
+	if (portPreference != PREFERENCE_DEFAULT) {
+		port = portPreference;
+	}
+	return true;
+}
+
+bool FlashpointProxy::enable() {
+	bool proxy = FP_PROXY_DEFAULT;
+	int port = FP_PROXY_PORT_DEFAULT;
+
+	if (!getPreferences(proxy, port)) {
+		return false;
+	}
+
+	if (!proxy) {
+		return true;
+	}
+
+	bool result = true;
+
+	std::ostringstream oStringStream;
+	oStringStream << "http=127.0.0.1:" << port << ";https=127.0.0.1:" << port << ";ftp=127.0.0.1:" << port;
+
+	std::string proxyServer = oStringStream.str();
 
 	// create two options
 	const DWORD INTERNET_PER_CONN_OPTION_LIST_OPTIONS_SIZE = 2;
-	internetPerConnOptionList.pOptions = new INTERNET_PER_CONN_OPTION[INTERNET_PER_CONN_OPTION_LIST_OPTIONS_SIZE];
+	std::unique_ptr<INTERNET_PER_CONN_OPTION[]> optionsPointer = std::unique_ptr<INTERNET_PER_CONN_OPTION[]>(new INTERNET_PER_CONN_OPTION[INTERNET_PER_CONN_OPTION_LIST_OPTIONS_SIZE]);
 
-	if (!internetPerConnOptionList.pOptions) {
-		InternetCloseHandle(internetHandle);
+	if (!optionsPointer) {
 		return false;
 	}
 
 	// set PROXY flags
-	internetPerConnOptionList.pOptions[0].dwOption = INTERNET_PER_CONN_FLAGS;
-	internetPerConnOptionList.pOptions[0].Value.dwValue = PROXY_TYPE_PROXY;
+	optionsPointer[0].dwOption = INTERNET_PER_CONN_FLAGS;
+	optionsPointer[0].Value.dwValue = PROXY_TYPE_PROXY;
 
 	// set proxy name
-	internetPerConnOptionList.pOptions[1].dwOption = INTERNET_PER_CONN_PROXY_SERVER;
-	size_t proxyServerSize = stringSize(proxyServer);
-	internetPerConnOptionList.pOptions[1].Value.pszValue = new CHAR[proxyServerSize];
+	optionsPointer[1].dwOption = INTERNET_PER_CONN_PROXY_SERVER;
 
-	if (!internetPerConnOptionList.pOptions[1].Value.pszValue) {
-		if (internetPerConnOptionList.pOptions) {
-			delete[] internetPerConnOptionList.pOptions;
-			internetPerConnOptionList.pOptions = NULL;
-		}
+	size_t proxyServerSize = proxyServer.size() + 1;
+	std::unique_ptr<CHAR[]> _proxyServer = std::unique_ptr<CHAR[]>(new CHAR[proxyServerSize]);
 
-		InternetCloseHandle(internetHandle);
+	if (!_proxyServer) {
 		return false;
 	}
 
-	if (strncpy_s(internetPerConnOptionList.pOptions[1].Value.pszValue, proxyServerSize, proxyServer, proxyServerSize)) {
-		if (internetPerConnOptionList.pOptions[1].Value.pszValue) {
-			delete[] internetPerConnOptionList.pOptions[1].Value.pszValue;
-			internetPerConnOptionList.pOptions[1].Value.pszValue = NULL;
-		}
+	if (strncpy_s(_proxyServer.get(), proxyServerSize, proxyServer.c_str(), proxyServerSize)) {
+		return false;
+	}
 
-		if (internetPerConnOptionList.pOptions) {
-			delete[] internetPerConnOptionList.pOptions;
-			internetPerConnOptionList.pOptions = NULL;
-		}
+	optionsPointer[1].Value.pszValue = _proxyServer.get();
 
-		InternetCloseHandle(internetHandle);
+	if (!optionsPointer[1].Value.pszValue) {
+		return false;
+	}
+
+	// initialize a INTERNET_PER_CONN_OPTION_LIST instance
+	INTERNET_PER_CONN_OPTION_LIST internetPerConnOptionList = {};
+	const DWORD INTERNET_PER_CONN_OPTION_LIST_SIZE = sizeof(internetPerConnOptionList);
+
+	internetPerConnOptionList.pOptions = optionsPointer.get();
+
+	if (!internetPerConnOptionList.pOptions) {
 		return false;
 	}
 
 	// fill the internetPerConnOptionList structure
-	internetPerConnOptionList.dwSize = internetPerConnOptionListSize;
+	internetPerConnOptionList.dwSize = INTERNET_PER_CONN_OPTION_LIST_SIZE;
 
 	// NULL == LAN, otherwise connectoid name
 	internetPerConnOptionList.pszConnection = NULL;
@@ -103,117 +146,83 @@ bool FlashpointProxy::enable(LPSTR proxyServer) {
 	internetPerConnOptionList.dwOptionCount = INTERNET_PER_CONN_OPTION_LIST_OPTIONS_SIZE;
 	internetPerConnOptionList.dwOptionError = 0;
 
-	// set the options on the connection
-	if (!InternetSetOption(internetHandle, INTERNET_OPTION_PER_CONNECTION_OPTION, &internetPerConnOptionList, internetPerConnOptionListSize)) {
-		lastError = GetLastError();
-
-        // free the allocated memory
-		if (internetPerConnOptionList.pOptions[1].Value.pszValue) {
-			delete[] internetPerConnOptionList.pOptions[1].Value.pszValue;
-			internetPerConnOptionList.pOptions[1].Value.pszValue = NULL;
-		}
-
-		if (internetPerConnOptionList.pOptions) {
-			delete[] internetPerConnOptionList.pOptions;
-			internetPerConnOptionList.pOptions = NULL;
-		}
-		
-		InternetCloseHandle(internetHandle);
-		SetLastError(lastError);
-		return false;
-	}
-	
-	// free the allocated memory
-	if (internetPerConnOptionList.pOptions[1].Value.pszValue) {
-		delete[] internetPerConnOptionList.pOptions[1].Value.pszValue;
-		internetPerConnOptionList.pOptions[1].Value.pszValue = NULL;
-	}
-	
-	if (internetPerConnOptionList.pOptions) {
-		delete[] internetPerConnOptionList.pOptions;
-		internetPerConnOptionList.pOptions = NULL;
-	}
-	
-	if (!InternetCloseHandle(internetHandle)) {
-		return false;
-	}
-	return true;
-}
-
-bool FlashpointProxy::disable() {
-	DWORD lastError = 0;
 	HINTERNET internetHandle = InternetOpen(AGENT, INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+
+	SCOPE_EXIT {
+		DWORD lastError = GetLastError();
+
+		if (!closeInternetHandle(internetHandle)) {
+			result = false;
+		}
+
+		SetLastError(lastError);
+	};
 
 	if (!internetHandle) {
 		return false;
 	}
-	
-    // initialize a INTERNET_PER_CONN_OPTION_LIST instance
-	INTERNET_PER_CONN_OPTION_LIST internetPerConnOptionList;
-	const DWORD internetPerConnOptionListSize = sizeof(internetPerConnOptionList);
+
+	// set the options on the connection
+	if (!InternetSetOption(internetHandle, INTERNET_OPTION_PER_CONNECTION_OPTION, &internetPerConnOptionList, INTERNET_PER_CONN_OPTION_LIST_SIZE)) {
+		return false;
+	}
+	return result;
+}
+
+bool FlashpointProxy::disable() {
+	bool result = true;
 
 	// create two options
 	const DWORD INTERNET_PER_CONN_OPTION_LIST_OPTIONS_SIZE = 2;
-	internetPerConnOptionList.pOptions = new INTERNET_PER_CONN_OPTION[INTERNET_PER_CONN_OPTION_LIST_OPTIONS_SIZE];
+	std::unique_ptr<INTERNET_PER_CONN_OPTION[]> optionsPointer = std::unique_ptr<INTERNET_PER_CONN_OPTION[]>(new INTERNET_PER_CONN_OPTION[INTERNET_PER_CONN_OPTION_LIST_OPTIONS_SIZE]);
+
+	if (!optionsPointer) {
+		return false;
+	}
+
+	// initialize a INTERNET_PER_CONN_OPTION_LIST instance
+	INTERNET_PER_CONN_OPTION_LIST internetPerConnOptionList = {};
+	const DWORD internetPerConnOptionListSize = sizeof(internetPerConnOptionList);
+
+	internetPerConnOptionList.pOptions = optionsPointer.get();
 
 	if (!internetPerConnOptionList.pOptions) {
 		return false;
 	}
 	
 	if (!getSystemProxy(internetPerConnOptionList, INTERNET_PER_CONN_OPTION_LIST_OPTIONS_SIZE)) {
-		InternetCloseHandle(internetHandle);
+		return false;
+	}
+
+	HINTERNET internetHandle = InternetOpen(AGENT, INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+
+	SCOPE_EXIT {
+		DWORD lastError = GetLastError();
+
+		if (!closeInternetHandle(internetHandle)) {
+			result = false;
+		}
+
+		SetLastError(lastError);
+	};
+
+	if (!internetHandle) {
 		return false;
 	}
 	
     // set internet options
 	if (!InternetSetOption(internetHandle, INTERNET_OPTION_PER_CONNECTION_OPTION, &internetPerConnOptionList, internetPerConnOptionListSize)) {
-		lastError = GetLastError();
-
-        if (internetPerConnOptionList.pOptions) {
-			delete[] internetPerConnOptionList.pOptions;
-			internetPerConnOptionList.pOptions = NULL;
-		}
-		
-		InternetCloseHandle(internetHandle);
-		SetLastError(lastError);
 		return false;
 	}
 	
 	// notify the system that the registry settings have been changed and cause
     // the proxy data to be reread from the registry for a handle
 	if (!InternetSetOption(internetHandle, INTERNET_OPTION_SETTINGS_CHANGED, NULL, 0)) {
-		lastError = GetLastError();
-
-        if (internetPerConnOptionList.pOptions) {
-			delete[] internetPerConnOptionList.pOptions;
-			internetPerConnOptionList.pOptions = NULL;
-		}
-		
-		InternetCloseHandle(internetHandle);
-		SetLastError(lastError);
 		return false;
 	}
 	
 	if (!InternetSetOption(internetHandle, INTERNET_OPTION_REFRESH, NULL, 0)) {
-		lastError = GetLastError();
-
-        if (internetPerConnOptionList.pOptions) {
-			delete[] internetPerConnOptionList.pOptions;
-			internetPerConnOptionList.pOptions = NULL;
-		}
-		
-		InternetCloseHandle(internetHandle);
-		SetLastError(lastError);
 		return false;
 	}
-	
-	if (!InternetCloseHandle(internetHandle)) {
-		return false;
-	}
-	
-	if (internetPerConnOptionList.pOptions) {
-		delete[] internetPerConnOptionList.pOptions;
-		internetPerConnOptionList.pOptions = NULL;
-	}
-	return true;
+	return result;
 }
