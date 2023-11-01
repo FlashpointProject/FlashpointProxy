@@ -53,24 +53,24 @@ bool FlashpointProxy::getPreferences(bool &proxy, int &port) {
 	proxy = FP_PROXY_DEFAULT;
 	port = FP_PROXY_PORT_DEFAULT;
 
-	long proxyPreference = PREFERENCE_DEFAULT;
+	long preference = PREFERENCE_DEFAULT;
 	
-	if (!getPreference(FP_PROXY_FILE_NAME, FP_PROXY, proxyPreference)) {
+	if (!getPreference(FP_PROXY_FILE_NAME, FP_PROXY, preference)) {
 		return false;
 	}
 
-	long portPreference = PREFERENCE_DEFAULT;
+	if (preference != PREFERENCE_DEFAULT) {
+		proxy = (bool)preference;
+	}
 
-	if (!getPreference(FP_PROXY_PORT_FILE_NAME, FP_PROXY_PORT, portPreference)) {
+	preference = PREFERENCE_DEFAULT;
+
+	if (!getPreference(FP_PROXY_PORT_FILE_NAME, FP_PROXY_PORT, preference)) {
 		return false;
 	}
 
-	if (proxyPreference != PREFERENCE_DEFAULT) {
-		proxy = (bool)proxyPreference;
-	}
-
-	if (portPreference != PREFERENCE_DEFAULT) {
-		port = portPreference;
+	if (preference != PREFERENCE_DEFAULT) {
+		port = preference;
 	}
 	return true;
 }
