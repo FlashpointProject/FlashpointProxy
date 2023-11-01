@@ -103,6 +103,23 @@ void setCurrentThreadContext(CONTEXT &context) {
 	#endif
 }
 
+bool preferenceStringToLong(LPCSTR preferenceString, long &preference) {
+	if (!preferenceString) {
+		return false;
+	}
+
+	char* endPointer = 0;
+
+	errno = 0;
+	preference = strtol(preferenceString, &endPointer, 0);
+
+	if (preferenceString == endPointer
+		|| (!preference && errno != 0)) {
+		preference = PREFERENCE_DEFAULT;
+	}
+	return true;
+}
+
 bool getFilePreference(LPCSTR fileName, long &preference) {
 	preference = PREFERENCE_DEFAULT;
 
@@ -121,16 +138,18 @@ bool getFilePreference(LPCSTR fileName, long &preference) {
 	};
 
 	if (file && file != INVALID_HANDLE_VALUE) {
-		const DWORD PREFERENCE_SIZE = 16;
-		CHAR _preference[PREFERENCE_SIZE] = "";
+		const DWORD PREFERENCE_STRING_SIZE = 16;
+		CHAR preferenceString[PREFERENCE_STRING_SIZE] = "";
 
 		DWORD numberOfBytesRead = 0;
 
-		if (!ReadFile(file, _preference, PREFERENCE_SIZE - 1, &numberOfBytesRead, NULL)) {
+		if (!ReadFile(file, preferenceString, PREFERENCE_STRING_SIZE - 1, &numberOfBytesRead, NULL)) {
 			return false;
 		}
 
-		preference = strtol(_preference, 0, 0);
+		if (!preferenceStringToLong(preferenceString, preference)) {
+			return false;
+		}
 	}
 	return result;
 }
@@ -142,11 +161,13 @@ bool getEnvironmentVariablePreference(LPCSTR environmentVariableName, long &pref
 		return false;
 	}
 
-	const DWORD PREFERENCE_SIZE = 16;
-	CHAR _preference[PREFERENCE_SIZE] = "";
+	const DWORD PREFERENCE_STRING_SIZE = 16;
+	CHAR preferenceString[PREFERENCE_STRING_SIZE] = "";
 
-	if (GetEnvironmentVariable(environmentVariableName, _preference, PREFERENCE_SIZE - 1)) {
-		preference = strtol(_preference, 0, 0);
+	if (GetEnvironmentVariable(environmentVariableName, preferenceString, PREFERENCE_STRING_SIZE - 1)) {
+		if (!preferenceStringToLong(preferenceString, preference)) {
+			return false;
+		}
 	}
 	return true;
 }
