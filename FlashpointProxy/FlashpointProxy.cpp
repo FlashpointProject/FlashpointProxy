@@ -94,6 +94,22 @@ bool FlashpointProxy::enable() {
 
 	std::string proxyServer = oStringStream.str();
 
+	HINTERNET internetHandle = InternetOpen(AGENT, INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+
+	SCOPE_EXIT {
+		DWORD lastError = GetLastError();
+
+		if (!closeInternetHandle(internetHandle)) {
+			result = false;
+		}
+
+		SetLastError(lastError);
+	};
+
+	if (!internetHandle) {
+		return false;
+	}
+
 	// create two options
 	const DWORD INTERNET_PER_CONN_OPTION_LIST_OPTIONS_SIZE = 2;
 	std::unique_ptr<INTERNET_PER_CONN_OPTION[]> optionsPointer = std::unique_ptr<INTERNET_PER_CONN_OPTION[]>(new INTERNET_PER_CONN_OPTION[INTERNET_PER_CONN_OPTION_LIST_OPTIONS_SIZE]);
@@ -146,6 +162,16 @@ bool FlashpointProxy::enable() {
 	internetPerConnOptionList.dwOptionCount = INTERNET_PER_CONN_OPTION_LIST_OPTIONS_SIZE;
 	internetPerConnOptionList.dwOptionError = 0;
 
+	// set the options on the connection
+	if (!InternetSetOption(internetHandle, INTERNET_OPTION_PER_CONNECTION_OPTION, &internetPerConnOptionList, INTERNET_PER_CONN_OPTION_LIST_SIZE)) {
+		return false;
+	}
+	return result;
+}
+
+bool FlashpointProxy::disable() {
+	bool result = true;
+
 	HINTERNET internetHandle = InternetOpen(AGENT, INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
 
 	SCOPE_EXIT {
@@ -161,16 +187,6 @@ bool FlashpointProxy::enable() {
 	if (!internetHandle) {
 		return false;
 	}
-
-	// set the options on the connection
-	if (!InternetSetOption(internetHandle, INTERNET_OPTION_PER_CONNECTION_OPTION, &internetPerConnOptionList, INTERNET_PER_CONN_OPTION_LIST_SIZE)) {
-		return false;
-	}
-	return result;
-}
-
-bool FlashpointProxy::disable() {
-	bool result = true;
 
 	// create two options
 	const DWORD INTERNET_PER_CONN_OPTION_LIST_OPTIONS_SIZE = 2;
@@ -191,22 +207,6 @@ bool FlashpointProxy::disable() {
 	}
 	
 	if (!getSystemProxy(internetPerConnOptionList, INTERNET_PER_CONN_OPTION_LIST_OPTIONS_SIZE)) {
-		return false;
-	}
-
-	HINTERNET internetHandle = InternetOpen(AGENT, INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
-
-	SCOPE_EXIT {
-		DWORD lastError = GetLastError();
-
-		if (!closeInternetHandle(internetHandle)) {
-			result = false;
-		}
-
-		SetLastError(lastError);
-	};
-
-	if (!internetHandle) {
 		return false;
 	}
 	
