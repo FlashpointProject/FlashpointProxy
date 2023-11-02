@@ -17,10 +17,12 @@ LPCSTR FlashpointProxy::FP_PROXY_PORT = "FP_PROXY_PORT";
 
 bool FlashpointProxy::getSystemProxy(INTERNET_PER_CONN_OPTION_LIST &internetPerConnOptionList, DWORD internetPerConnOptionListOptionsSize) {
 	if (!internetPerConnOptionList.pOptions) {
+		showLastError("Options Pointer must not be NULL");
 		return false;
 	}
 
 	if (internetPerConnOptionListOptionsSize < 2) {
+		showLastError("internetPerConnOptionListOptionsSize must not be less than 2");
 		return false;
 	}
 
@@ -44,6 +46,7 @@ bool FlashpointProxy::getSystemProxy(INTERNET_PER_CONN_OPTION_LIST &internetPerC
 
 	// query internet options
 	if (!InternetQueryOption(NULL, INTERNET_OPTION_PER_CONNECTION_OPTION, &internetPerConnOptionList, &internetPerConnOptionListSize)) {
+		showLastError("Failed to Query Internet Option");
 		return false;
 	}
 	return true;
@@ -56,6 +59,7 @@ bool FlashpointProxy::getPreferences(bool &proxy, int &port) {
 	long preference = PREFERENCE_DEFAULT;
 	
 	if (!getPreference(FP_PROXY_FILE_NAME, FP_PROXY, preference)) {
+		showLastError("Failed to Get Preference");
 		return false;
 	}
 
@@ -66,6 +70,7 @@ bool FlashpointProxy::getPreferences(bool &proxy, int &port) {
 	preference = PREFERENCE_DEFAULT;
 
 	if (!getPreference(FP_PROXY_PORT_FILE_NAME, FP_PROXY_PORT, preference)) {
+		showLastError("Failed to Get Preference");
 		return false;
 	}
 
@@ -80,6 +85,7 @@ bool FlashpointProxy::enable() {
 	int port = FP_PROXY_PORT_DEFAULT;
 
 	if (!getPreferences(proxy, port)) {
+		showLastError("Failed to Get Preferences");
 		return false;
 	}
 
@@ -100,13 +106,17 @@ bool FlashpointProxy::enable() {
 		DWORD lastError = GetLastError();
 
 		if (!closeInternetHandle(internetHandle)) {
+			showLastError("Failed to Close Internet Handle");
 			result = false;
 		}
 
-		SetLastError(lastError);
+		if (lastError) {
+			SetLastError(lastError);
+		}
 	};
 
 	if (!internetHandle) {
+		showLastError("Failed to Open Internet Handle");
 		return false;
 	}
 
@@ -115,6 +125,7 @@ bool FlashpointProxy::enable() {
 	std::unique_ptr<INTERNET_PER_CONN_OPTION[]> optionsPointer = std::unique_ptr<INTERNET_PER_CONN_OPTION[]>(new INTERNET_PER_CONN_OPTION[INTERNET_PER_CONN_OPTION_LIST_OPTIONS_SIZE]);
 
 	if (!optionsPointer) {
+		showLastError("Failed to Allocate optionsPointer");
 		return false;
 	}
 
@@ -129,16 +140,19 @@ bool FlashpointProxy::enable() {
 	std::unique_ptr<CHAR[]> _proxyServer = std::unique_ptr<CHAR[]>(new CHAR[proxyServerSize]);
 
 	if (!_proxyServer) {
+		showLastError("Failed to Allocate proxyServer");
 		return false;
 	}
 
 	if (strncpy_s(_proxyServer.get(), proxyServerSize, proxyServer.c_str(), proxyServerSize)) {
+		showLastError("Failed to Copy String");
 		return false;
 	}
 
 	optionsPointer[1].Value.pszValue = _proxyServer.get();
 
 	if (!optionsPointer[1].Value.pszValue) {
+		showLastError("Value Pointer must not be NULL");
 		return false;
 	}
 
@@ -149,6 +163,7 @@ bool FlashpointProxy::enable() {
 	internetPerConnOptionList.pOptions = optionsPointer.get();
 
 	if (!internetPerConnOptionList.pOptions) {
+		showLastError("Options Pointer must not be NULL");
 		return false;
 	}
 
@@ -164,6 +179,7 @@ bool FlashpointProxy::enable() {
 
 	// set the options on the connection
 	if (!InternetSetOption(internetHandle, INTERNET_OPTION_PER_CONNECTION_OPTION, &internetPerConnOptionList, INTERNET_PER_CONN_OPTION_LIST_SIZE)) {
+		showLastError("Failed to Set Internet Option");
 		return false;
 	}
 	return result;
@@ -178,13 +194,17 @@ bool FlashpointProxy::disable() {
 		DWORD lastError = GetLastError();
 
 		if (!closeInternetHandle(internetHandle)) {
+			showLastError("Failed to Close Internet Handle");
 			result = false;
 		}
 
-		SetLastError(lastError);
+		if (lastError) {
+			SetLastError(lastError);
+		}
 	};
 
 	if (!internetHandle) {
+		showLastError("Failed to Open Internet Handle");
 		return false;
 	}
 
@@ -193,6 +213,7 @@ bool FlashpointProxy::disable() {
 	std::unique_ptr<INTERNET_PER_CONN_OPTION[]> optionsPointer = std::unique_ptr<INTERNET_PER_CONN_OPTION[]>(new INTERNET_PER_CONN_OPTION[INTERNET_PER_CONN_OPTION_LIST_OPTIONS_SIZE]);
 
 	if (!optionsPointer) {
+		showLastError("Failed to Allocate optionsPointer");
 		return false;
 	}
 
@@ -203,25 +224,30 @@ bool FlashpointProxy::disable() {
 	internetPerConnOptionList.pOptions = optionsPointer.get();
 
 	if (!internetPerConnOptionList.pOptions) {
+		showLastError("Options Pointer must not be NULL");
 		return false;
 	}
 	
 	if (!getSystemProxy(internetPerConnOptionList, INTERNET_PER_CONN_OPTION_LIST_OPTIONS_SIZE)) {
+		showLastError("Failed to Get System Proxy");
 		return false;
 	}
 	
     // set internet options
 	if (!InternetSetOption(internetHandle, INTERNET_OPTION_PER_CONNECTION_OPTION, &internetPerConnOptionList, internetPerConnOptionListSize)) {
+		showLastError("Failed to Set Internet Option");
 		return false;
 	}
 	
 	// notify the system that the registry settings have been changed and cause
     // the proxy data to be reread from the registry for a handle
 	if (!InternetSetOption(internetHandle, INTERNET_OPTION_SETTINGS_CHANGED, NULL, 0)) {
+		showLastError("Failed to Set Internet Option");
 		return false;
 	}
 	
 	if (!InternetSetOption(internetHandle, INTERNET_OPTION_REFRESH, NULL, 0)) {
+		showLastError("Failed to Set Internet Option");
 		return false;
 	}
 	return result;
