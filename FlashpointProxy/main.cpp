@@ -86,7 +86,7 @@ extern "C" BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, PCONTEXT contex
 			return FALSE;
 		}
 
-		// is the context pointer actually pointing to anything
+		// check whether the context pointer actually pointing to anything
 		if (IS_INTRESOURCE(contextPointer)) {
 			// dynamic link
 			if (!dynamicLink()) {
