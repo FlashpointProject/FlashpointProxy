@@ -12,9 +12,6 @@ const int FlashpointProxy::FP_PROXY_PORT_DEFAULT = 22500;
 LPCSTR FlashpointProxy::FP_PROXY_FILE_NAME = "proxy.txt";
 LPCSTR FlashpointProxy::FP_PROXY_PORT_FILE_NAME = "port.txt";
 
-LPCSTR FlashpointProxy::FP_PROXY = "FP_PROXY";
-LPCSTR FlashpointProxy::FP_PROXY_PORT = "FP_PROXY_PORT";
-
 bool FlashpointProxy::getSystemProxy(INTERNET_PER_CONN_OPTION_LIST &internetPerConnOptionList, DWORD internetPerConnOptionListOptionsSize) {
 	if (!internetPerConnOptionList.pOptions) {
 		showLastError("Options Pointer must not be NULL");
@@ -51,6 +48,9 @@ bool FlashpointProxy::getSystemProxy(INTERNET_PER_CONN_OPTION_LIST &internetPerC
 	}
 	return true;
 }
+
+LPCSTR FlashpointProxy::FP_PROXY = "FP_PROXY";
+LPCSTR FlashpointProxy::FP_PROXY_PORT = "FP_PROXY_PORT";
 
 bool FlashpointProxy::getPreferences(bool &proxy, int &port) {
 	proxy = FP_PROXY_DEFAULT;
