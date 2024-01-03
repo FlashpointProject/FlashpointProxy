@@ -9,8 +9,8 @@
 
 static long PREFERENCE_DEFAULT = -1;
 
-inline size_t stringSize(const char* string) {
-	return strlen(string) + 1;
+inline size_t stringSize(const char* str) {
+	return strlen(str) + 1;
 }
 
 inline bool closeHandle(HANDLE &handle) {
